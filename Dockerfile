@@ -17,4 +17,4 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 
 # Command to run the application
-ENTRYPOINT ["python", "dread_campaign_generator.py"] 
+CMD ["python", "dread_campaign_generator.py"] 

@@ -1,9 +1,9 @@
-from typing import Dict, List, TypedDict, Annotated
+from typing import TypedDict, Annotated
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, END
-import json
+from langgraph.graph import StateGraph
 from dotenv import load_dotenv
 import os
+import operator
 
 # Load environment variables
 load_dotenv()
@@ -12,11 +12,11 @@ load_dotenv()
 class CampaignState(TypedDict):
     campaign_prompt: str
     scenario_summary: str
-    character_roles: List[Dict[str, str]]
-    act_structure: Dict[str, str]
-    npcs_and_events: str
-    ending_possibilities: str
-    gm_tips: str
+    character_roles: Annotated[str, operator.add]
+    act_structure: Annotated[str, operator.add]
+    npcs_and_events: Annotated[str, operator.add]
+    ending_possibilities: Annotated[str, operator.add]
+    gm_tips: Annotated[str, operator.add]
     final_output: str
 
 # Initialize the LLM
@@ -27,7 +27,7 @@ llm = ChatGoogleGenerativeAI(
 
 def generate_scenario_summary(state: CampaignState) -> CampaignState:
     """Generate a detailed scenario summary."""
-    print("\nGenerating scenario summary...")
+    print("Generating scenario summary...")
     prompt = f"""Based on the following campaign prompt, create a detailed scenario summary for a Dread RPG campaign:
     
     {state['campaign_prompt']}
@@ -47,7 +47,7 @@ def generate_scenario_summary(state: CampaignState) -> CampaignState:
 
 def generate_character_roles(state: CampaignState) -> CampaignState:
     """Generate character roles and questionnaires."""
-    print("\nGenerating character roles and questionnaires...")
+    print("Generating character roles and questionnaires...")
     prompt = f"""Based on this Dread campaign scenario:
     
     {state['scenario_summary']}
@@ -64,13 +64,12 @@ def generate_character_roles(state: CampaignState) -> CampaignState:
     All questions should invite storytelling and create tension."""
     
     response = llm.invoke(prompt)
-    state['character_roles'] = response.content.split('\n\n')
     print("✓ Character roles and questionnaires generated")
-    return state
+    return {"character_roles": response.content}
 
 def generate_act_structure(state: CampaignState) -> CampaignState:
     """Generate the three-act structure."""
-    print("\nGenerating act structure...")
+    print("Generating act structure...")
     prompt = f"""Based on this Dread campaign scenario:
     
     {state['scenario_summary']}
@@ -98,13 +97,12 @@ def generate_act_structure(state: CampaignState) -> CampaignState:
     Format each act in a clear, structured way with specific moments and triggers."""
     
     response = llm.invoke(prompt)
-    state['act_structure'] = response.content
     print("✓ Act structure generated")
-    return state
+    return {"act_structure": response.content}
 
 def generate_npcs_and_events(state: CampaignState) -> CampaignState:
     """Generate NPCs and key events."""
-    print("\nGenerating NPCs and events...")
+    print("Generating NPCs and events...")
     prompt = f"""Based on this Dread campaign scenario:
     
     {state['scenario_summary']}
@@ -125,13 +123,12 @@ def generate_npcs_and_events(state: CampaignState) -> CampaignState:
     Format in a clear, structured way that's easy to reference during play."""
     
     response = llm.invoke(prompt)
-    state['npcs_and_events'] = response.content
     print("✓ NPCs and events generated")
-    return state
+    return {"npcs_and_events": response.content}
 
 def generate_ending_possibilities(state: CampaignState) -> CampaignState:
     """Generate possible endings."""
-    print("\nGenerating ending possibilities...")
+    print("Generating ending possibilities...")
     prompt = f"""Based on this Dread campaign scenario:
     
     {state['scenario_summary']}
@@ -151,13 +148,12 @@ def generate_ending_possibilities(state: CampaignState) -> CampaignState:
     Format in a clear, structured way."""
     
     response = llm.invoke(prompt)
-    state['ending_possibilities'] = response.content
     print("✓ Ending possibilities generated")
-    return state
+    return {"ending_possibilities": response.content}
 
 def generate_gm_tips(state: CampaignState) -> CampaignState:
     """Generate specific GM tips for this scenario."""
-    print("\nGenerating GM tips...")
+    print("Generating GM tips...")
     prompt = f"""Based on this Dread campaign scenario:
     
     {state['scenario_summary']}
@@ -173,20 +169,19 @@ def generate_gm_tips(state: CampaignState) -> CampaignState:
     Format as clear, actionable advice."""
     
     response = llm.invoke(prompt)
-    state['gm_tips'] = response.content
     print("✓ GM tips generated")
-    return state
+    return {"gm_tips": response.content}
 
 def format_final_output(state: CampaignState) -> CampaignState:
     """Format all the generated content into a final campaign document."""
-    print("\nFormatting final output...")
+    print("Formatting final output...")
     final_output = f"""# DREAD CAMPAIGN: {state['campaign_prompt']}
 
 ## Scenario Summary
 {state['scenario_summary']}
 
 ## Character Roles & Questionnaires
-{chr(10).join(state['character_roles'])}
+{state['character_roles']}
 
 ## Act Structure
 {state['act_structure']}
@@ -210,38 +205,47 @@ def format_final_output(state: CampaignState) -> CampaignState:
     print("✓ Final output formatted")
     return state
 
-# Create the graph
-workflow = StateGraph(CampaignState)
-
-# Add nodes
-workflow.add_node("generate_summary", generate_scenario_summary)
-workflow.add_node("generate_roles", generate_character_roles)
-workflow.add_node("generate_acts", generate_act_structure)
-workflow.add_node("generate_npcs", generate_npcs_and_events)
-workflow.add_node("generate_endings", generate_ending_possibilities)
-workflow.add_node("generate_tips", generate_gm_tips)
-workflow.add_node("format_output", format_final_output)
-
-# Add edges
-workflow.add_edge("generate_summary", "generate_roles")
-workflow.add_edge("generate_roles", "generate_acts")
-workflow.add_edge("generate_acts", "generate_npcs")
-workflow.add_edge("generate_npcs", "generate_endings")
-workflow.add_edge("generate_endings", "generate_tips")
-workflow.add_edge("generate_tips", "format_output")
-workflow.add_edge("format_output", END)
-
-# Set entry point and compile the graph
-workflow.set_entry_point("generate_summary")
-app = workflow.compile()
+def create_campaign_graph() -> StateGraph:
+    """Create the LangGraph for campaign generation."""
+    # Create the graph
+    graph = StateGraph(CampaignState)
+    
+    # Add nodes
+    graph.add_node("generate_scenario_summary", generate_scenario_summary)
+    graph.add_node("generate_character_roles", generate_character_roles)
+    graph.add_node("generate_act_structure", generate_act_structure)
+    graph.add_node("generate_npcs_and_events", generate_npcs_and_events)
+    graph.add_node("generate_ending_possibilities", generate_ending_possibilities)
+    graph.add_node("generate_gm_tips", generate_gm_tips)
+    graph.add_node("format_final_output", format_final_output)
+    
+    # Add edges from scenario summary to all parallel branches
+    graph.add_edge("generate_scenario_summary", "generate_character_roles")
+    graph.add_edge("generate_scenario_summary", "generate_act_structure")
+    graph.add_edge("generate_scenario_summary", "generate_npcs_and_events")
+    graph.add_edge("generate_scenario_summary", "generate_ending_possibilities")
+    graph.add_edge("generate_scenario_summary", "generate_gm_tips")
+    
+    # Add edges from all parallel branches to final formatting
+    # The reducers in the state definition will handle combining the results
+    graph.add_edge("generate_character_roles", "format_final_output")
+    graph.add_edge("generate_act_structure", "format_final_output")
+    graph.add_edge("generate_npcs_and_events", "format_final_output")
+    graph.add_edge("generate_ending_possibilities", "format_final_output")
+    graph.add_edge("generate_gm_tips", "format_final_output")
+    
+    # Set entry point
+    graph.set_entry_point("generate_scenario_summary")
+    
+    return graph
 
 def generate_campaign(campaign_prompt: str) -> str:
     """Generate a complete Dread campaign from a prompt."""
     # Initialize the state
-    state = {
+    initial_state = {
         "campaign_prompt": campaign_prompt,
         "scenario_summary": "",
-        "character_roles": [],
+        "character_roles": "",
         "act_structure": "",
         "npcs_and_events": "",
         "ending_possibilities": "",
@@ -249,8 +253,9 @@ def generate_campaign(campaign_prompt: str) -> str:
         "final_output": ""
     }
     
-    # Run the graph
-    result = app.invoke(state)
+    # Create and run the graph
+    graph = create_campaign_graph()
+    result = graph.compile().invoke(initial_state)
     
     return result['final_output']
 
@@ -267,4 +272,4 @@ if __name__ == "__main__":
     with open("dread_campaign.md", "w") as f:
         f.write(campaign)
     
-    print("\nCampaign generated and saved to 'dread_campaign.md'") 
+    print("Campaign generated and saved to 'dread_campaign.md'") 
