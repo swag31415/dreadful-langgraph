@@ -1,0 +1,13 @@
+services:
+  dread-campaign-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    stdin_open: true  # equivalent to docker run -i
+    tty: true        # equivalent to docker run -t
+    # This ensures the container stays running and interactive
+    command: python -u dread_campaign_generator.py 
